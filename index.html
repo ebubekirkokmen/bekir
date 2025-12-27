@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NeroPerformance | Pro Finans v7.4</title>
+    <title>NeroPerformance | Pro Finans v8.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
@@ -58,10 +58,18 @@
         <div class="fixed-signature">POWERED BY KKMN</div>
 
         <aside class="sidebar flex-col p-6 h-full relative">
-            <div class="mb-12 text-center">
+            <div class="mb-8 text-center">
                 <h1 class="text-4xl font-black italic text-nero-dark uppercase">Nero</h1>
                 <p class="text-[9px] font-black tracking-[0.5em] text-red-600 uppercase">Performance</p>
             </div>
+            
+            <div class="mb-6 bg-nero-dark/5 p-3 rounded-2xl">
+                <label class="text-[9px] font-black text-nero-dark/50 uppercase block mb-1">AKTİF DÖNEM (SAYFA)</label>
+                <select id="periodSelector" onchange="changePeriod()" class="w-full bg-white border border-nero-dark/10 p-2 rounded-xl text-xs font-bold text-nero-dark outline-none">
+                </select>
+                <button onclick="createNewPeriod()" class="w-full mt-2 bg-nero-dark text-nero-light text-[9px] font-black p-2 rounded-lg uppercase">+ YENİ SAYFA AÇ</button>
+            </div>
+
             <nav class="flex-grow space-y-2">
                 <div onclick="switchTab('kasa')" id="btn-kasa" class="nav-item active"><i data-lucide="wallet"></i> Kasa Durumu</div>
                 <div onclick="switchTab('gecmis')" id="btn-gecmis" class="nav-item"><i data-lucide="car"></i> Araç Arşivi</div>
@@ -82,7 +90,10 @@
 
         <main class="flex-grow flex flex-col relative z-10 h-full w-full">
             <header class="p-6 md:p-8 flex justify-between items-end">
-                <h2 id="pageTitle" class="text-2xl md:text-4xl font-black uppercase text-nero-light tracking-tighter italic">Kasa Durumu</h2>
+                <div>
+                    <h2 id="pageTitle" class="text-2xl md:text-4xl font-black uppercase text-nero-light tracking-tighter italic">Kasa Durumu</h2>
+                    <p id="periodLabel" class="text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1">YÜKLENİYOR...</p>
+                </div>
                 <div id="clock" class="text-xl font-mono font-bold text-nero-light opacity-50">00:00</div>
             </header>
             <div id="contentArea" class="flex-grow p-4 md:p-8 overflow-y-auto pb-32 custom-scroll"></div>
@@ -105,7 +116,7 @@
                     <input type="number" id="m_price_mech" class="glass-input" placeholder="MEKANİK ₺">
                 </div>
                 <div class="bg-white/5 p-4 rounded-2xl border border-white/5">
-                    <label class="text-[9px] font-black text-nero-light/40 uppercase block mb-2">Stoktan Ürün Düş (Çoklu)</label>
+                    <label class="text-[9px] font-black text-nero-light/40 uppercase block mb-2">Stoktan Ürün Düş</label>
                     <select id="m_product_select" class="glass-input bg-nero-dark text-xs mb-3" onchange="addProdToSelection()">
                         <option value="">Ürün Seç...</option>
                     </select>
@@ -119,27 +130,44 @@
         </div>
     </div>
 
+    <div id="detailModal" class="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/95 hidden backdrop-blur-md p-4">
+        <div class="bg-nero-dark border-2 border-white/10 p-6 rounded-3xl w-full max-w-2xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                <h3 class="text-xl font-black text-white uppercase italic">İşlem Detayı & Düzenle</h3>
+                <button onclick="closeDetailModal()" class="text-white/50"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            
+            <div id="detailContent" class="space-y-4">
+                </div>
+
+            <div class="mt-6 pt-4 border-t border-white/10 flex gap-3">
+                <button onclick="saveDetails()" class="flex-1 bg-blue-600 text-white p-4 rounded-xl font-black uppercase shadow-lg">DEĞİŞİKLİKLERİ KAYDET</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, serverTimestamp, increment, getDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "AIzaSyAE5S_Tyjefd_1owTbnZ5i0t9lZ9QrmDWQ", projectId: "nerookasaa" };
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        let dbData = { inventory: [], history: [] };
+        let dbData = { inventory: [], history: [], periods: [] };
         let activeTab = 'kasa';
         let currentSelections = [];
+        let currentPeriodId = null;
+        let editingTxId = null; // Düzenlenen işlemin ID'si
 
+        // --- AUTH ---
         window.handleLogin = () => {
             const u = document.getElementById('username').value;
             const p = document.getElementById('password').value;
             if(u === "admin" && p === "nero2025") { localStorage.setItem('nero_auth', 'true'); checkAuth(); }
             else { alert("Giriş Başarısız!"); }
         };
-
         window.handleLogout = () => { localStorage.removeItem('nero_auth'); location.reload(); };
-
         const checkAuth = () => {
             if(localStorage.getItem('nero_auth') === 'true') {
                 document.getElementById('loginScreen').style.display = 'none';
@@ -148,8 +176,23 @@
             }
         };
 
+        // --- DATA SYNC ---
         const syncData = () => {
             onSnapshot(collection(db, 'inventory'), s => { dbData.inventory = s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>!x.deleted); refreshUI(); });
+            
+            // Dönemleri Çek
+            onSnapshot(collection(db, 'periods'), s => { 
+                dbData.periods = s.docs.map(d=>({id:d.id,...d.data()}));
+                dbData.periods.sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                
+                // Eğer hiç dönem yoksa otomatik oluştur
+                if(dbData.periods.length === 0) createNewPeriod(true);
+                else if (!currentPeriodId) currentPeriodId = dbData.periods[0].id; // En günceli seç
+                
+                renderPeriodSelector();
+                refreshUI();
+            });
+
             onSnapshot(collection(db, 'history'), s => { 
                 dbData.history = s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>!x.deleted);
                 dbData.history.sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
@@ -157,6 +200,34 @@
             });
         };
 
+        // --- PERIOD LOGIC ---
+        window.createNewPeriod = async (isAuto = false) => {
+            if(!isAuto && !confirm("Mevcut sayfayı kapatıp sıfır bir kasa sayfası açmak istiyor musunuz?")) return;
+            
+            const name = `DÖNEM #${dbData.periods.length + 1} - ${new Date().toLocaleDateString('tr-TR')}`;
+            const id = crypto.randomUUID();
+            await setDoc(doc(db, 'periods', id), {
+                name: name,
+                timestamp: serverTimestamp(),
+                status: 'active'
+            });
+            currentPeriodId = id;
+            if(!isAuto) alert("Yeni sayfa açıldı! Kasa sıfırlandı.");
+        };
+
+        window.renderPeriodSelector = () => {
+            const sel = document.getElementById('periodSelector');
+            sel.innerHTML = dbData.periods.map(p => `<option value="${p.id}" ${p.id === currentPeriodId ? 'selected' : ''}>${p.name}</option>`).join('');
+            const activeP = dbData.periods.find(p => p.id === currentPeriodId);
+            document.getElementById('periodLabel').innerText = activeP ? activeP.name : 'GEÇMİŞ';
+        };
+
+        window.changePeriod = () => {
+            currentPeriodId = document.getElementById('periodSelector').value;
+            refreshUI();
+        };
+
+        // --- UI RENDERING ---
         window.switchTab = (t) => {
             activeTab = t;
             document.querySelectorAll('.nav-item, .nav-item-mobile').forEach(el => el.classList.remove('active'));
@@ -168,18 +239,24 @@
         const refreshUI = () => {
             const container = document.getElementById('contentArea');
             if(!container) return;
+            
+            const filteredHistory = dbData.history.filter(h => {
+                if (!h.periodId) return true; 
+                return h.periodId === currentPeriodId;
+            });
+
             container.innerHTML = '';
-            if (activeTab === 'kasa') renderKasa(container);
-            else if (activeTab === 'gecmis') renderGecmis(container);
+            if (activeTab === 'kasa') renderKasa(container, filteredHistory);
+            else if (activeTab === 'gecmis') renderGecmis(container, filteredHistory);
             else if (activeTab === 'stok') renderStok(container);
             lucide.createIcons();
             populateProductDropdown();
         };
 
-        const renderKasa = (container) => {
+        const renderKasa = (container, historyData) => {
             let tFile = 0, tMech = 0, tProd = 0, tDebt = 0;
             const debts = [];
-            dbData.history.forEach(h => {
+            historyData.forEach(h => {
                 const total = (h.incomeFile||0) + (h.incomeMech||0) + (h.incomePart||0);
                 if(h.status === 'paid') { tFile += h.incomeFile||0; tMech += h.incomeMech||0; tProd += h.incomePart||0; }
                 else { tDebt += total; debts.push(h); }
@@ -187,7 +264,7 @@
 
             container.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                    <div class="bg-red-600 p-6 rounded-3xl shadow-xl"><div class="text-[10px] font-black opacity-60 uppercase mb-1">Nakit Toplam</div><div class="text-4xl font-black">₺${(tFile+tMech+tProd).toLocaleString()}</div></div>
+                    <div class="bg-red-600 p-6 rounded-3xl shadow-xl"><div class="text-[10px] font-black opacity-60 uppercase mb-1">Nakit Toplam (Bu Sayfa)</div><div class="text-4xl font-black">₺${(tFile+tMech+tProd).toLocaleString()}</div></div>
                     <div class="bg-white/5 border border-white/10 p-5 rounded-3xl"><div class="text-[9px] font-bold opacity-40 uppercase">Yazılım/Mekanik/Parça</div><div class="text-lg font-black italic text-white">₺${tFile.toLocaleString()}/₺${tMech.toLocaleString()}/₺${tProd.toLocaleString()}</div></div>
                     <div class="bg-yellow-600/20 border border-yellow-600/40 p-5 rounded-3xl md:col-span-2"><div class="text-[9px] font-bold text-yellow-500 uppercase tracking-widest">BEKLEYEN VERESİYE</div><div class="text-3xl font-black text-yellow-500">₺${tDebt.toLocaleString()}</div></div>
                 </div>
@@ -197,7 +274,7 @@
                         <div class="flex items-center gap-4"><div class="font-black text-yellow-500 text-xl">₺${((h.incomeFile||0)+(h.incomeMech||0)+(h.incomePart||0)).toLocaleString()}</div><button onclick="markAsPaid('${h.id}')" class="bg-green-600 text-white p-2 px-4 rounded-xl font-black text-[10px]">KAPAT</button></div>
                     </div>`).join('')}</div>` : ''}
                 <h3 class="text-xs font-black text-nero-light/40 uppercase mb-4 tracking-[0.2em]">Finansal Akış</h3>
-                <div class="space-y-3">${dbData.history.slice(0, 10).map(h => `
+                <div class="space-y-3">${historyData.slice(0, 20).map(h => `
                     <div class="bg-white/5 p-4 rounded-2xl flex justify-between items-center border-l-4 ${h.status==='paid'?'border-green-500':'border-yellow-500'}">
                         <div><div class="font-black text-white uppercase">${h.plate}</div><div class="text-[9px] opacity-40 uppercase">${h.model}</div></div>
                         <div class="text-right"><div class="font-black text-white">₺${((h.incomeFile||0)+(h.incomeMech||0)+(h.incomePart||0)).toLocaleString()}</div><div class="text-[8px] opacity-30 font-bold">${h.date}</div></div>
@@ -205,22 +282,24 @@
             `;
         };
 
-        const renderGecmis = (container) => {
+        const renderGecmis = (container, historyData) => {
             container.innerHTML = `<input type="text" id="sr" placeholder="PLAKA ARA..." class="glass-input mb-4 text-center font-black uppercase" onkeyup="filter()">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="hlist">${dbData.history.map(h => `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="hlist">${historyData.map(h => `
                     <div class="bg-white/5 p-5 rounded-3xl relative border border-white/5 card-item" data-plate="${h.plate}">
                         <button onclick="delItem('history','${h.id}')" class="absolute top-4 right-4 text-white/10"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         <h4 class="text-2xl font-black text-white tracking-tighter uppercase italic">${h.plate}</h4>
                         <p class="text-[10px] font-bold opacity-30 mb-3">${h.model} | ${h.date}</p>
+                        
                         <div class="grid grid-cols-2 gap-2 mb-4">
                             <button onclick="document.getElementById('fo_${h.id}').click()" class="bg-blue-500/10 text-blue-400 p-2 rounded-xl text-[9px] font-black border border-blue-500/20 truncate">${h.fileOrig ? '📁 ' + h.fileOrig : '+ ORİJİNAL'}</button>
                             <button onclick="document.getElementById('fm_${h.id}').click()" class="bg-red-500/10 text-red-400 p-2 rounded-xl text-[9px] font-black border border-red-500/20 truncate">${(h.modFiles?.length > 0) ? `🚀 MODLU (${h.modFiles.length})` : '+ MODLU'}</button>
                             <input type="file" id="fo_${h.id}" class="hidden" onchange="uploadS('${h.id}', this)">
                             <input type="file" id="fm_${h.id}" class="hidden" onchange="uploadM('${h.id}', this)">
                         </div>
+
                         <div class="flex justify-between items-center pt-3 border-t border-white/5">
-                            <span class="text-[10px] font-black ${h.status==='paid'?'text-green-500':'text-yellow-500'} uppercase">${h.status}</span>
-                            <span class="font-black text-white italic">₺${((h.incomeFile||0)+(h.incomeMech||0)+(h.incomePart||0)).toLocaleString()}</span>
+                            <button onclick="openDetailModal('${h.id}')" class="bg-white/10 hover:bg-white/20 text-white text-[10px] font-black py-2 px-4 rounded-lg uppercase">DETAY & DÜZENLE</button>
+                            <span class="font-black text-white italic text-lg">₺${((h.incomeFile||0)+(h.incomeMech||0)+(h.incomePart||0)).toLocaleString()}</span>
                         </div>
                     </div>`).join('')}</div>`;
         };
@@ -240,6 +319,163 @@
                     </div>`).join('')}</div>`;
         };
 
+        // --- DETAILS & EDITING LOGIC ---
+        window.openDetailModal = (hId) => {
+            editingTxId = hId;
+            const h = dbData.history.find(x => x.id === hId);
+            if(!h) return;
+
+            const modal = document.getElementById('detailModal');
+            const content = document.getElementById('detailContent');
+            
+            const soldItemsHtml = (h.soldItems && h.soldItems.length > 0) 
+                ? h.soldItems.map((item, idx) => `
+                    <div class="flex justify-between items-center bg-black/20 p-3 rounded-lg border border-white/5">
+                        <span class="text-xs font-bold text-white">${item.name}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-white/50">₺${item.price}</span>
+                            <button onclick="removeSoldItem(${idx})" class="text-red-500 font-black text-xs hover:bg-red-500/10 p-1 rounded">İADE/SİL</button>
+                        </div>
+                    </div>
+                `).join('') 
+                : `<div class="text-white/30 text-xs italic p-2">Bu işlemde kayıtlı parça detayı yok.</div>`;
+
+            // Dropdown seçeneklerini oluştur
+            const prodOptions = `<option value="">Katkı/Parça Seç...</option>` + dbData.inventory.map(p => `<option value="${p.id}">${p.name} (₺${p.price})</option>`).join('');
+
+            content.innerHTML = `
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="text-[9px] font-black text-white/40 uppercase">Plaka</label>
+                        <input type="text" id="ed_plate" value="${h.plate}" class="glass-input font-black uppercase text-yellow-500">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-black text-white/40 uppercase">Model</label>
+                        <input type="text" id="ed_model" value="${h.model}" class="glass-input font-bold">
+                    </div>
+                </div>
+                
+                <div class="bg-white/5 p-4 rounded-xl border border-white/5 mb-4">
+                    <label class="text-[9px] font-black text-red-400 uppercase block mb-3">Satılan Parçalar / Katkılar</label>
+                    <div id="ed_sold_list" class="space-y-2 mb-3 max-h-32 overflow-y-auto custom-scroll">
+                        ${soldItemsHtml}
+                    </div>
+                    
+                    <div class="mt-4 pt-4 border-t border-white/10">
+                        <label class="text-[9px] font-black text-white/40 uppercase block mb-1">Mevcut İşleme Ürün Ekle</label>
+                        <div class="flex gap-2">
+                            <select id="ed_new_prod_select" class="glass-input bg-nero-dark text-xs h-10">${prodOptions}</select>
+                            <button onclick="addSoldItemToDetail()" class="bg-green-600 text-white p-2 rounded-lg text-xs font-black h-10 w-20 flex items-center justify-center">EKLE</button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between text-xs font-bold text-white/50 pt-4 mt-2 border-t border-white/10">
+                        <span>Parça Toplamı:</span>
+                        <span id="ed_part_total">₺${h.incomePart || 0}</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[9px] font-black text-white/40 uppercase">Yazılım Ücreti</label>
+                        <input type="number" id="ed_price_file" value="${h.incomeFile}" class="glass-input text-right">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-black text-white/40 uppercase">Mekanik Ücreti</label>
+                        <input type="number" id="ed_price_mech" value="${h.incomeMech}" class="glass-input text-right">
+                    </div>
+                </div>
+            `;
+            
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        };
+
+        // YENİ FONKSİYON: Detay ekranından ürün ekleme
+        window.addSoldItemToDetail = async () => {
+            const sel = document.getElementById('ed_new_prod_select');
+            const prodId = sel.value;
+            if(!prodId) return alert("Lütfen bir ürün seçin!");
+
+            const product = dbData.inventory.find(x => x.id === prodId);
+            if(!product) return;
+
+            if(!confirm(`${product.name} eklemek istiyor musunuz? Stoktan düşülecek ve fiyata eklenecek.`)) return;
+
+            const h = dbData.history.find(x => x.id === editingTxId);
+            
+            // Yeni parça listesi
+            const newSoldItems = [...(h.soldItems || []), {
+                id: product.id,
+                name: product.name,
+                price: parseFloat(product.price) || 0
+            }];
+            
+            // Yeni parça toplamı
+            const newPartTotal = newSoldItems.reduce((sum, i) => sum + (parseFloat(i.price)||0), 0);
+
+            // History güncelle (History'ye ekle, fiyatı güncelle)
+            await updateDoc(doc(db, 'history', editingTxId), {
+                soldItems: newSoldItems,
+                incomePart: newPartTotal
+            });
+
+            // Stoktan düş
+            await updateDoc(doc(db, 'inventory', prodId), {
+                stock: increment(-1)
+            });
+
+            // Ekranı yenile
+            openDetailModal(editingTxId);
+        };
+
+        window.removeSoldItem = async (idx) => {
+            if(!confirm("Bu ürünü satıştan silip STOĞA GERİ EKLEMEK istiyor musunuz?")) return;
+            
+            const h = dbData.history.find(x => x.id === editingTxId);
+            const item = h.soldItems[idx];
+            
+            if(item.id) {
+                await updateDoc(doc(db, 'inventory', item.id), { stock: increment(1) });
+            }
+
+            const newSoldItems = [...h.soldItems];
+            newSoldItems.splice(idx, 1);
+            
+            const newPartTotal = newSoldItems.reduce((sum, i) => sum + (parseFloat(i.price)||0), 0);
+
+            await updateDoc(doc(db, 'history', editingTxId), {
+                soldItems: newSoldItems,
+                incomePart: newPartTotal
+            });
+
+            openDetailModal(editingTxId);
+        };
+
+        window.saveDetails = async () => {
+            const plate = document.getElementById('ed_plate').value;
+            const model = document.getElementById('ed_model').value;
+            const file = parseFloat(document.getElementById('ed_price_file').value) || 0;
+            const mech = parseFloat(document.getElementById('ed_price_mech').value) || 0;
+
+            await updateDoc(doc(db, 'history', editingTxId), {
+                plate: plate.toUpperCase(),
+                model: model.toUpperCase(),
+                incomeFile: file,
+                incomeMech: mech
+            });
+            
+            closeDetailModal();
+            alert("İşlem Güncellendi!");
+        };
+
+        window.closeDetailModal = () => {
+            document.getElementById('detailModal').classList.add('hidden');
+            editingTxId = null;
+        };
+
+
+        // --- TRANSACTION SAVING ---
         window.addProdToSelection = () => {
             const s = document.getElementById('m_product_select');
             const p = dbData.inventory.find(x => x.id === s.value);
@@ -258,23 +494,36 @@
         window.saveTransaction = async (status) => {
             const plate = document.getElementById('m_plate').value.toUpperCase();
             if(!plate) return alert("Plaka Girin!");
-            const prodTotal = currentSelections.reduce((sum, p) => sum + (parseFloat(p.price)||0), 0);
+            
+            // Satılan ürünlerin detaylarını kaydetmek için hazırla
+            const soldItemsData = currentSelections.map(p => ({
+                id: p.id,
+                name: p.name,
+                price: parseFloat(p.price) || 0
+            }));
+
+            const prodTotal = soldItemsData.reduce((sum, p) => sum + p.price, 0);
             const id = crypto.randomUUID();
+            
             await setDoc(doc(db, 'history', id), {
                 plate, 
                 model: document.getElementById('m_model').value.toUpperCase(), 
                 incomeFile: parseFloat(document.getElementById('m_price_file').value)||0,
                 incomeMech: parseFloat(document.getElementById('m_price_mech').value)||0,
                 incomePart: prodTotal, 
+                soldItems: soldItemsData, 
                 status, 
+                periodId: currentPeriodId, 
                 date: new Date().toLocaleDateString('tr-TR'), 
                 timestamp: serverTimestamp(), 
                 deleted: false
             });
+            
             for(let p of currentSelections) { await updateDoc(doc(db, 'inventory', p.id), { stock: increment(-1) }); }
             closeModal();
         };
 
+        // --- HELPERS ---
         window.editProduct = async (id) => {
             const p = dbData.inventory.find(x => x.id === id);
             const newName = prompt("Yeni Ürün İsmi?", p.name);
@@ -293,7 +542,14 @@
         window.markAsPaid = async (id) => { if(confirm("Borç Kapatılsın mı?")) await updateDoc(doc(db, 'history', id), { status: 'paid' }); };
         window.uploadS = async (id, inp) => { if(inp.files[0]) await updateDoc(doc(db, 'history', id), { fileOrig: inp.files[0].name }); };
         window.uploadM = async (id, inp) => { if(inp.files[0]) await updateDoc(doc(db, 'history', id), { modFiles: arrayUnion(inp.files[0].name) }); };
-        window.openModal = () => { currentSelections = []; renderSelectedList(); document.getElementById('entryModal').classList.remove('hidden'); };
+        window.openModal = () => { 
+            currentSelections = []; renderSelectedList(); 
+            document.getElementById('m_plate').value = "";
+            document.getElementById('m_model').value = "";
+            document.getElementById('m_price_file').value = "";
+            document.getElementById('m_price_mech').value = "";
+            document.getElementById('entryModal').classList.remove('hidden'); 
+        };
         window.closeModal = () => document.getElementById('entryModal').classList.add('hidden');
         window.populateProductDropdown = () => {
             const sel = document.getElementById('m_product_select');
